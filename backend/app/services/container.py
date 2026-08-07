@@ -9,7 +9,9 @@ from app.agents.planner_agent import PlannerAgent
 from app.services.amap_client import AmapClient
 from app.services.cache_service import CacheService
 from app.services.collection_service import CollectionService
+from app.services.plan_store import PlanStore
 from app.services.poi_cache import PoiCache
+from app.services.rate_limit import RateLimiter
 from app.services.static_map_service import StaticMapService
 from app.services.weather_cache import WeatherCache
 
@@ -26,3 +28,5 @@ class Services:
     static_map_service: StaticMapService
     llm_client: LLMClient
     planner_agent: PlannerAgent
+    plan_rate_limiter: RateLimiter
+    plan_store: PlanStore

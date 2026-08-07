@@ -6,13 +6,12 @@ import base64
 import json
 import logging
 import secrets
-import time
-from collections import defaultdict, deque
 
 from app.models.schemas import TripPlan
 from app.services.amap_client import AmapClient
 from app.services.cache_service import CacheService
 from app.services.errors import StaticMapNotFoundError, StaticMapRateLimitError
+from app.services.rate_limit import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -36,26 +35,6 @@ CROSS_DAY_PATH_WEIGHT = "2"
 DEFAULT_ZOOM = 12
 MIN_ZOOM = 10
 MAX_ZOOM = 15
-
-
-class SlidingWindowRateLimiter:
-    """内存滑动窗口限流器（按 key，如客户端 IP）。"""
-
-    def __init__(self, max_requests: int, window_seconds: float = 60.0) -> None:
-        self._max_requests = max_requests
-        self._window_seconds = window_seconds
-        self._history: dict[str, deque[float]] = defaultdict(deque)
-
-    def allow(self, key: str) -> bool:
-        """判定当前请求是否放行；同时清理窗口外时间戳。"""
-        now = time.monotonic()
-        history = self._history[key]
-        while history and now - history[0] > self._window_seconds:
-            history.popleft()
-        if len(history) >= self._max_requests:
-            return False
-        history.append(now)
-        return True
 
 
 def build_static_map_params(trip_plan: TripPlan, size: str) -> dict[str, str] | None:
@@ -127,13 +106,13 @@ class StaticMapService:
         *,
         size: str,
         token_ttl_seconds: int,
-        rate_limit_per_minute: int,
+        rate_limiter: RateLimiter,
     ) -> None:
         self._cache = cache_service
         self._amap = amap_client
         self._size = size
         self._token_ttl_seconds = token_ttl_seconds
-        self._rate_limiter = SlidingWindowRateLimiter(rate_limit_per_minute)
+        self._rate_limiter = rate_limiter
 
     async def create_map_token(self, trip_plan: TripPlan) -> str | None:
         """生成并存储静态图参数 token；Redis 不可用或无坐标时返回 None。"""
@@ -150,7 +129,7 @@ class StaticMapService:
 
     async def render_map_image(self, token: str, client_ip: str) -> bytes:
         """按 token 渲染静态图；命中缓存直接返回，否则调用高德并回填。"""
-        if not self._rate_limiter.allow(client_ip):
+        if not await self._rate_limiter.allow(client_ip):
             raise StaticMapRateLimitError()
         raw_params = await self._cache.get(f"{STATIC_MAP_TOKEN_PREFIX}{token}")
         if raw_params is None:

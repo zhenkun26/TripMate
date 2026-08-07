@@ -61,3 +61,17 @@ class StaticMapRateLimitError(TripMateError):
 
     def __init__(self) -> None:
         super().__init__("地图请求过于频繁，请稍后再试", status_code=429)
+
+
+class PlanRateLimitError(TripMateError):
+    """行程规划接口触发限流。"""
+
+    def __init__(self) -> None:
+        super().__init__("规划请求过于频繁，请稍后再试", status_code=429)
+
+
+class SharedPlanNotFoundError(TripMateError):
+    """分享行程 token 无效或已过期。"""
+
+    def __init__(self) -> None:
+        super().__init__("分享行程不存在或已过期", status_code=404)

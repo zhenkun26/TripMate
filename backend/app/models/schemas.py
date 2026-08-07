@@ -115,6 +115,7 @@ class TripPlan(TripPlanDraft):
     weather_updated_at: str | None = Field(default=None, description="天气数据更新时间(ISO8601)")
     weather_stale: bool = Field(default=False, description="天气数据是否延迟")
     map_image_url: str | None = Field(default=None, description="静态地图代理地址")
+    share_token: str | None = Field(default=None, description="分享 token（用于分享链接）")
     notices: list[str] = Field(default_factory=list, description="降级/提示信息")
 
 

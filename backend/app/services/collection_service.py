@@ -152,7 +152,7 @@ class CollectionService:
 
     @staticmethod
     def _extract_adcode(raw_pois: list[dict[str, Any]]) -> str:
-        """从 POI 检索结果中提取 adcode（优先 poi.adcode，其次 suggestion）。"""
+        """从 POI 检索结果中提取首个非空 adcode，找不到时返回空串。"""
         for raw_poi in raw_pois:
             adcode = raw_poi.get("adcode")
             if isinstance(adcode, str) and adcode:

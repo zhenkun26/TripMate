@@ -35,19 +35,65 @@ async def test_should_return_none_from_null_cache() -> None:
     await cache.delete("any-key")
 
 
+class FlappingRedis:
+    """先连接失败、可手动恢复的假 Redis。"""
+
+    def __init__(self) -> None:
+        self.healthy = False
+        self.store: dict[str, str] = {}
+
+    async def ping(self) -> bool:
+        if not self.healthy:
+            raise RedisConnectionError("connection refused")
+        return True
+
+    async def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    async def set(self, key: str, value: str, ex: int) -> None:
+        self.store[key] = value
+
+    async def delete(self, key: str) -> None:
+        self.store.pop(key, None)
+
+
 @pytest.mark.asyncio
-async def test_should_fallback_to_null_cache_when_redis_unavailable(
+async def test_create_cache_service_should_keep_redis_impl_when_initially_down() -> None:
+    """启动时 Redis 不可用也应返回 Redis 实现（而非永久 NullCache），等待自动恢复。"""
+    cache_service = await create_cache_service("redis://127.0.0.1:1/0")
+    assert isinstance(cache_service, RedisCacheService)
+    assert not cache_service.available
+    assert await cache_service.get("any-key") is None
+
+
+@pytest.mark.asyncio
+async def test_redis_cache_should_bypass_gracefully_when_unhealthy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    redis_cache = RedisCacheService("redis://127.0.0.1:1/0")
+    service = RedisCacheService("redis://127.0.0.1:1/0")
+    monkeypatch.setattr(service, "_redis", FlappingRedis())
+    await service.set("key", "value", 60)
+    assert await service.get("key") is None
+    assert not service.available
 
-    class FailingRedis:
-        async def ping(self) -> None:
-            raise RedisConnectionError("connection refused")
 
-    monkeypatch.setattr(redis_cache, "_redis", FailingRedis())
-    cache_service = await create_cache_service("redis://127.0.0.1:1/0")
-    assert isinstance(cache_service, NullCacheService)
+@pytest.mark.asyncio
+async def test_redis_cache_should_recover_automatically_after_redis_returns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Redis 恢复后无需重启即可自动接回缓存。"""
+    monkeypatch.setattr("app.services.cache_service.RECONNECT_COOLDOWN_SECONDS", 0.0)
+    service = RedisCacheService("redis://127.0.0.1:1/0")
+    fake_redis = FlappingRedis()
+    monkeypatch.setattr(service, "_redis", fake_redis)
+
+    assert await service.get("key") is None
+    assert not service.available
+
+    fake_redis.healthy = True
+    await service.set("key", "value", 60)
+    assert service.available
+    assert await service.get("key") == "value"
 
 
 @pytest.mark.asyncio

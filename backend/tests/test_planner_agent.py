@@ -15,6 +15,7 @@ from app.models.schemas import TripPlanDraft
 from app.services.candidate_service import build_attraction_candidates, build_hotel_candidates
 from app.services.collection_service import CollectionResult
 from app.services.errors import LLMOutputError, PlanValidationError
+from app.services.rate_limit import SlidingWindowRateLimiter
 from app.services.static_map_service import StaticMapService
 from tests.conftest import (
     FakeAmapClient,
@@ -114,7 +115,7 @@ def build_agent(llm: FakeLLMClient) -> tuple[PlannerAgent, StaticMapService, Fak
         amap,
         size="750x400",
         token_ttl_seconds=86400,
-        rate_limit_per_minute=60,
+        rate_limiter=SlidingWindowRateLimiter(60),
     )
     return PlannerAgent(llm, static_map), static_map, cache
 

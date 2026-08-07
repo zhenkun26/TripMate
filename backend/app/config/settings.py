@@ -19,6 +19,8 @@ class Settings(BaseSettings):
         static_map_size: 静态图尺寸 "宽x高"。
         static_map_token_ttl_seconds: 静态图 token/图片缓存 TTL。
         static_map_rate_limit_per_minute: 静态图代理单 IP 每分钟限流次数。
+        plan_rate_limit_per_minute: 行程规划接口单 IP 每分钟限流次数。
+        plan_share_ttl_seconds: 分享行程的缓存 TTL（过期后分享链接失效）。
     """
 
     model_config = SettingsConfigDict(
@@ -37,6 +39,8 @@ class Settings(BaseSettings):
     static_map_size: str = "750x400"
     static_map_token_ttl_seconds: int = 24 * 60 * 60
     static_map_rate_limit_per_minute: int = 60
+    plan_rate_limit_per_minute: int = 10
+    plan_share_ttl_seconds: int = 7 * 24 * 60 * 60
 
 
 @lru_cache

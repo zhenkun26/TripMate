@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TypeVar
+import time
+from typing import Any, TypeVar
 
 import httpx
 from agents import Agent, ModelSettings, Runner, set_default_openai_client, set_tracing_disabled
@@ -87,10 +88,12 @@ class LLMClient:
             output_type=output_type,
             model_settings=ModelSettings(temperature=self._temperature),
         )
+        started_at = time.monotonic()
         try:
             result = await Runner.run(agent, input=user_input, max_turns=3)
         except Exception as exc:
             raise self._map_sdk_error(exc) from exc
+        self._log_usage("structured", started_at, result)
         output = result.final_output_as(output_type)
         if output is None:
             raise LLMOutputError("LLM 未产出符合契约的结构化结果")
@@ -118,14 +121,29 @@ class LLMClient:
             model=self._model,
             model_settings=ModelSettings(temperature=self._temperature),
         )
+        started_at = time.monotonic()
         try:
             result = await Runner.run(agent, input=user_input, max_turns=2)
         except Exception as exc:
             raise self._map_sdk_error(exc) from exc
+        self._log_usage("text", started_at, result)
         output = result.final_output_as(str)
         if output is None:
             raise LLMOutputError("LLM 未返回文本结果")
         return output
+
+    def _log_usage(self, mode: str, started_at: float, result: Any) -> None:
+        """记录单次 LLM 调用的 token 用量与耗时（成本可观测）。"""
+        latency_seconds = time.monotonic() - started_at
+        usage = getattr(getattr(result, "context_wrapper", None), "usage", None)
+        logger.info(
+            "LLM 调用完成: mode=%s model=%s latency=%.1fs input_tokens=%s output_tokens=%s",
+            mode,
+            self._model,
+            latency_seconds,
+            getattr(usage, "input_tokens", "?"),
+            getattr(usage, "output_tokens", "?"),
+        )
 
     def _map_sdk_error(self, exc: Exception) -> Exception:
         """把 SDK/openai/httpx 异常映射为领域异常，保证失败路径可感知。"""

@@ -72,24 +72,30 @@ class WeatherCache:
                 return cached_entry.weather, cached_entry.fetched_at, True
 
         lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:
-            # 等待期间可能已被其他协程刷新
-            cached_entry = await self._read_entry(key)
-            if cached_entry is not None:
-                if now - cached_entry.fetched_at <= WEATHER_FRESH_TTL:
-                    return cached_entry.weather, cached_entry.fetched_at, False
-                if now - cached_entry.fetched_at <= WEATHER_FRESH_TTL + WEATHER_GRACE_EXTRA:
-                    return cached_entry.weather, cached_entry.fetched_at, True
-            try:
-                weather = await fetch_func()
-            except Exception as exc:
+        try:
+            async with lock:
+                # 等待期间可能已被其他协程刷新
+                cached_entry = await self._read_entry(key)
                 if cached_entry is not None:
-                    logger.warning("天气刷新失败，返回旧数据并标记 stale: %s", exc)
-                    return cached_entry.weather, cached_entry.fetched_at, True
-                raise WeatherUnavailableError(f"天气服务暂不可用: {exc}") from exc
-            fetched_at = self._clock()
-            await self._write_entry(key, weather, fetched_at)
-            return weather, fetched_at, False
+                    if now - cached_entry.fetched_at <= WEATHER_FRESH_TTL:
+                        return cached_entry.weather, cached_entry.fetched_at, False
+                    if now - cached_entry.fetched_at <= WEATHER_FRESH_TTL + WEATHER_GRACE_EXTRA:
+                        return cached_entry.weather, cached_entry.fetched_at, True
+                try:
+                    weather = await fetch_func()
+                except Exception as exc:
+                    if cached_entry is not None:
+                        logger.warning("天气刷新失败，返回旧数据并标记 stale: %s", exc)
+                        return cached_entry.weather, cached_entry.fetched_at, True
+                    raise WeatherUnavailableError(f"天气服务暂不可用: {exc}") from exc
+                fetched_at = self._clock()
+                await self._write_entry(key, weather, fetched_at)
+                return weather, fetched_at, False
+        finally:
+            # 锁用完后若未被其他协程持有则移除，避免 _locks 随城市数量无界增长；
+            # 极小概率与刚拿到同一锁的协程竞争，最坏后果是多一次上游抓取，可接受
+            if self._locks.get(key) is lock and not lock.locked():
+                self._locks.pop(key, None)
 
     async def _read_entry(self, key: str) -> WeatherCacheEntry | None:
         raw = await self._cache.get(key)

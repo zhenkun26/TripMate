@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
+from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -23,7 +25,9 @@ from app.services.cache_service import create_cache_service
 from app.services.collection_service import CollectionService
 from app.services.container import Services
 from app.services.errors import TripMateError
+from app.services.plan_store import PlanStore
 from app.services.poi_cache import PoiCache
+from app.services.rate_limit import create_rate_limiter
 from app.services.static_map_service import StaticMapService
 from app.services.weather_cache import WeatherCache
 
@@ -60,9 +64,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             amap_client,
             size=app_settings.static_map_size,
             token_ttl_seconds=app_settings.static_map_token_ttl_seconds,
-            rate_limit_per_minute=app_settings.static_map_rate_limit_per_minute,
+            rate_limiter=create_rate_limiter(
+                cache_service,
+                key_prefix="tripmate:rl:staticmap:",
+                max_requests=app_settings.static_map_rate_limit_per_minute,
+            ),
         )
         planner_agent = PlannerAgent(llm_client, static_map_service)
+        plan_rate_limiter = create_rate_limiter(
+            cache_service,
+            key_prefix="tripmate:rl:plan:",
+            max_requests=app_settings.plan_rate_limit_per_minute,
+        )
         app.state.services = Services(
             cache_service=cache_service,
             amap_client=amap_client,
@@ -72,6 +85,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             static_map_service=static_map_service,
             llm_client=llm_client,
             planner_agent=planner_agent,
+            plan_rate_limiter=plan_rate_limiter,
+            plan_store=PlanStore(
+                cache_service,
+                ttl_seconds=app_settings.plan_share_ttl_seconds,
+            ),
         )
         yield
         await amap_client.aclose()
@@ -85,6 +103,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(trip_router)
+
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next: Callable[..., Any]) -> Response:
+        """请求日志中间件：生成/透传 request id，记录方法、路径、状态码与耗时。"""
+        request_id = request.headers.get("X-Request-ID") or uuid4().hex[:12]
+        started_at = time.perf_counter()
+        response: Response = await call_next(request)
+        latency_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "%s %s -> %s (%.0fms) rid=%s",
+            request.method,
+            request.url.path,
+            response.status_code,
+            latency_ms,
+            request_id,
+        )
+        response.headers["X-Request-ID"] = request_id
+        return response
 
     @app.get("/api/health")
     async def health_check(request: Request) -> ApiEnvelope[dict[str, Any]]:

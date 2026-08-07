@@ -19,7 +19,9 @@ from app.models.schemas import TripPlan, TripPlanRequest
 from app.services.collection_service import CollectionService
 from app.services.container import Services
 from app.services.errors import LLMOutputError
+from app.services.plan_store import PlanStore
 from app.services.poi_cache import PoiCache
+from app.services.rate_limit import SlidingWindowRateLimiter
 from app.services.static_map_service import StaticMapService
 from app.services.weather_cache import WeatherCache
 from tests.conftest import FakeAmapClient, FakeCache, FakeClock, make_request, make_trip_plan
@@ -103,7 +105,7 @@ def build_client(planner: FakePlanner | None = None) -> Iterator[tuple[TestClien
             amap,
             size="750x400",
             token_ttl_seconds=86400,
-            rate_limit_per_minute=60,
+            rate_limiter=SlidingWindowRateLimiter(60),
         )
         cast(FastAPI, client.app).state.services = Services(
             cache_service=cache,
@@ -118,6 +120,8 @@ def build_client(planner: FakePlanner | None = None) -> Iterator[tuple[TestClien
                 model="fake-model",
             ),
             planner_agent=cast(PlannerAgent, planner or FakePlanner()),
+            plan_rate_limiter=SlidingWindowRateLimiter(1000),
+            plan_store=PlanStore(cache, ttl_seconds=3600),
         )
         yield client, amap
 
@@ -163,6 +167,17 @@ def test_should_return_502_when_llm_fails_after_retries(plan_payload: dict[str, 
         assert response.json()["message"] == "生成计划失败，请稍后重试"
 
 
+def test_should_return_429_when_plan_rate_limited(plan_payload: dict[str, Any]) -> None:
+    with build_client() as (client, _amap):
+        app = cast(FastAPI, client.app)
+        app.state.services.plan_rate_limiter = SlidingWindowRateLimiter(1)
+        first_response = client.post("/api/trip/plan", json=plan_payload)
+        second_response = client.post("/api/trip/plan", json=plan_payload)
+        assert first_response.status_code == 200
+        assert second_response.status_code == 429
+        assert "频繁" in second_response.json()["message"]
+
+
 def test_should_return_502_when_amap_unavailable(plan_payload: dict[str, Any]) -> None:
     with build_client() as (client, amap):
         amap.fail_attraction_search = True
@@ -194,6 +209,26 @@ def test_should_return_404_for_forged_static_map_token() -> None:
         response = client.get("/api/trip/static-map/forged-token")
         assert response.status_code == 404
         assert response.json()["message"] == "地图资源不存在或已过期"
+
+
+def test_should_issue_share_token_and_serve_shared_plan(plan_payload: dict[str, Any]) -> None:
+    with build_client() as (client, _amap):
+        create_response = client.post("/api/trip/plan", json=plan_payload)
+        assert create_response.status_code == 200
+        share_token = create_response.json()["data"]["share_token"]
+        assert share_token
+
+        shared_response = client.get(f"/api/trip/plan/{share_token}")
+        assert shared_response.status_code == 200
+        assert shared_response.json()["data"]["city"] == "北京"
+        assert shared_response.json()["data"]["share_token"] == share_token
+
+
+def test_should_return_404_for_forged_share_token() -> None:
+    with build_client() as (client, _amap):
+        response = client.get("/api/trip/plan/forged-token")
+        assert response.status_code == 404
+        assert "分享行程" in response.json()["message"]
 
 
 def test_health_check_should_report_status() -> None:

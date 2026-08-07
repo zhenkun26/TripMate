@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.services.errors import StaticMapNotFoundError, StaticMapRateLimitError
+from app.services.rate_limit import SlidingWindowRateLimiter
 from app.services.static_map_service import (
     DAY_COLORS,
     StaticMapService,
@@ -23,7 +24,7 @@ def build_service(
         FakeAmapClient(),
         size="750x400",
         token_ttl_seconds=86400,
-        rate_limit_per_minute=rate_limit_per_minute,
+        rate_limiter=SlidingWindowRateLimiter(rate_limit_per_minute),
     )
 
 
@@ -70,7 +71,7 @@ async def test_render_should_cache_image_and_avoid_repeated_amap_calls() -> None
         amap,
         size="750x400",
         token_ttl_seconds=86400,
-        rate_limit_per_minute=60,
+        rate_limiter=SlidingWindowRateLimiter(60),
     )
     token = await service.create_map_token(make_trip_plan())
     assert token is not None
