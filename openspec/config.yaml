@@ -1,0 +1,29 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Python 3.13 + FastAPI + Pydantic v2 (backend), Vue 3 + TypeScript + Vite + Ant Design Vue (frontend), OpenAI Agents SDK (PlannerAgent structured output), AMap REST (POI/weather/staticmap), Redis (weather/POI/staticmap cache), uv package manager
+  Domain: TripMate - AI intelligent travel planning assistant (MVP: 双规划 + 静态地图代理 + 品牌分享图；餐饮/编辑/PDF 已裁剪)
+  Conventions: PEP 8, full type annotations, shared Pydantic/TypeScript data contracts, secrets only in .env, reference docs in reference/
+  Planning: OpenSpec spec-driven workflow; deterministic data collection + single LLM planning + Redis cache as optimization layer; multi-provider LLM adaptation; verify-first for optional features (cut if hard)
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
