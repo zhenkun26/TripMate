@@ -32,6 +32,15 @@ export async function generateTripPlan(request: TripPlanRequest): Promise<TripPl
   return data
 }
 
+export async function fetchSharedPlan(token: string): Promise<TripPlan> {
+  const response = await api.get<ApiEnvelope<TripPlan>>(`/trip/plan/${token}`)
+  const data = response.data.data
+  if (!data) {
+    throw new Error('分享行程不存在或已过期')
+  }
+  return data
+}
+
 export function staticMapUrl(mapImageUrl: string): string {
   return mapImageUrl
 }

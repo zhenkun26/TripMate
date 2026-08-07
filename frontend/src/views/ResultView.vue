@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import html2canvas from 'html2canvas'
 import BudgetCard from '../components/BudgetCard.vue'
 import DayPlanCard from '../components/DayPlanCard.vue'
 import TripMap from '../components/TripMap.vue'
 import WeatherPanel from '../components/WeatherPanel.vue'
+import { fetchSharedPlan } from '../services/api'
 import { PLAN_STORAGE_KEY } from '../services/storage'
 import type { TripPlan } from '../types'
 import { formatDate } from '../utils/format'
 
 const router = useRouter()
+const route = useRoute()
 const plan = ref<TripPlan | null>(null)
 const sharing = ref(false)
 const activeSection = ref('overview')
@@ -31,20 +33,52 @@ const summaryText = computed(() => {
   return `${plan.value.city} · ${formatDate(plan.value.start_date)} 至 ${formatDate(plan.value.end_date)} · ${plan.value.days.length} 天`
 })
 
-onMounted(() => {
+const shareLink = computed(() => {
+  if (!plan.value?.share_token) {
+    return ''
+  }
+  return `${window.location.origin}/result?token=${plan.value.share_token}`
+})
+
+onMounted(async () => {
   const raw = sessionStorage.getItem(PLAN_STORAGE_KEY)
-  if (!raw) {
-    message.warning('暂无行程数据，请先规划')
-    router.replace({ name: 'home' })
+  if (raw) {
+    try {
+      plan.value = JSON.parse(raw) as TripPlan
+      return
+    } catch {
+      message.warning('行程数据已失效，请重新规划')
+      router.replace({ name: 'home' })
+      return
+    }
+  }
+  // 本地无数据时，尝试按分享链接的 token 从后端加载
+  const token = route.query.token
+  if (typeof token === 'string' && token) {
+    try {
+      plan.value = await fetchSharedPlan(token)
+      return
+    } catch (error) {
+      message.warning(error instanceof Error ? error.message : '分享行程不存在或已过期')
+      router.replace({ name: 'home' })
+      return
+    }
+  }
+  message.warning('暂无行程数据，请先规划')
+  router.replace({ name: 'home' })
+})
+
+async function copyShareLink(): Promise<void> {
+  if (!shareLink.value) {
     return
   }
   try {
-    plan.value = JSON.parse(raw) as TripPlan
+    await navigator.clipboard.writeText(shareLink.value)
+    message.success('分享链接已复制，发给朋友看看吧')
   } catch {
-    message.warning('行程数据已失效，请重新规划')
-    router.replace({ name: 'home' })
+    message.error('复制失败，请手动复制地址栏链接')
   }
-})
+}
 
 function scrollToSection(key: string): void {
   activeSection.value = key
@@ -138,6 +172,9 @@ async function handleShare(): Promise<void> {
       </a-col>
       <a-col :xs="24" :md="18">
         <div class="share-bar">
+          <a-button v-if="shareLink" class="share-link-btn" @click="copyShareLink">
+            🔗 复制分享链接
+          </a-button>
           <a-button type="primary" :loading="sharing" @click="handleShare">
             📸 生成分享图
           </a-button>
@@ -201,6 +238,7 @@ async function handleShare(): Promise<void> {
 .share-bar {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   margin-bottom: 12px;
 }
 

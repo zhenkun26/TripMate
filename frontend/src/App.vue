@@ -11,7 +11,7 @@ import { RouterView } from 'vue-router'
       <RouterView />
     </a-layout-content>
     <a-layout-footer class="app-footer">
-      TripMate MVP · 数据来自高德开放平台 · 生成结果仅供参考
+      TripMate · 数据来自高德开放平台 · 生成结果仅供参考
     </a-layout-footer>
   </a-layout>
 </template>

@@ -1,90 +1,28 @@
 /**
- * 与后端 Pydantic 模型一一对应的 TypeScript 契约。
- * 修改任一侧都必须同步另一侧；禁止 any/object/unknown。
+ * 前后端共享契约入口。
+ *
+ * 接口定义由后端 Pydantic 模型自动生成，见 ./contracts.generated.ts。
+ * 后端模型变更后必须重新生成：
+ *   cd backend && uv run python scripts/export_schemas.py
+ *   cd frontend && npm run generate:contracts
+ * CI 会重新生成并校验漂移，禁止手工修改 contracts.generated.ts。
  */
 
-export interface Location {
-  longitude: number
-  latitude: number
-}
+export type {
+  Attraction,
+  Budget,
+  DayPlan,
+  Hotel,
+  Location,
+  TripPlan,
+  TripPlanDraft,
+  TripPlanRequest,
+  WeatherInfo,
+} from './contracts.generated'
 
-export interface Attraction {
-  name: string
-  address: string
-  location: Location
-  visit_duration: number
-  description: string
-  category: string | null
-  rating: number | null
-  image_url: string | null
-  ticket_price: number
-  poi_id: string
-}
-
-export interface Hotel {
-  name: string
-  address: string
-  location: Location | null
-  price_range: string
-  rating: string
-  distance: string
-  type: string
-  estimated_cost: number
-  poi_id: string
-}
-
-export interface Budget {
-  total_attractions: number
-  total_hotels: number
-  total_transportation: number
-  total: number
-}
-
-export interface WeatherInfo {
-  date: string
-  day_weather: string
-  night_weather: string
-  day_temp: number
-  night_temp: number
-  wind_direction: string
-  wind_power: string
-}
-
-export interface DayPlan {
-  date: string
-  day_index: number
-  description: string
-  transportation: string
-  accommodation: string
-  hotel: Hotel | null
-  attractions: Attraction[]
-}
-
-export interface TripPlan {
-  city: string
-  start_date: string
-  end_date: string
-  days: DayPlan[]
-  overall_suggestions: string
-  budget: Budget | null
-  weather_info: WeatherInfo[]
-  weather_updated_at: string | null
-  weather_stale: boolean
-  map_image_url: string | null
-  notices: string[]
-}
-
-export interface TripPlanRequest {
-  city: string
-  start_date: string
-  end_date: string
-  days: number
-  preferences: string
-  budget: string
-  transportation: string
-  accommodation: string
-}
-
+/**
+ * 统一响应信封。泛型无法经 JSON Schema 表达，手工维护（成本仅数行）。
+ */
 export interface ApiEnvelope<T> {
   code: number
   data: T | null

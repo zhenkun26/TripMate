@@ -1,0 +1,660 @@
+{
+  "$defs": {
+    "Attraction": {
+      "description": "景点信息（来自高德真实候选数据）。",
+      "properties": {
+        "name": {
+          "description": "景点名称",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        },
+        "address": {
+          "default": "",
+          "description": "地址",
+          "maxLength": 200,
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/Location",
+          "description": "经纬度坐标"
+        },
+        "visit_duration": {
+          "description": "建议游览时间(分钟)",
+          "exclusiveMinimum": 0,
+          "maximum": 1440,
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "description": "景点描述",
+          "maxLength": 500,
+          "type": "string"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "maxLength": 50,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "景点类别"
+        },
+        "rating": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "评分"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "图片URL"
+        },
+        "ticket_price": {
+          "default": 0,
+          "description": "门票价格(元)",
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "poi_id": {
+          "description": "高德 poi_id",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "address",
+        "location",
+        "visit_duration",
+        "description",
+        "category",
+        "rating",
+        "image_url",
+        "ticket_price",
+        "poi_id"
+      ],
+      "title": "Attraction",
+      "type": "object",
+      "additionalProperties": false
+    },
+    "Budget": {
+      "description": "预算明细（门票/酒店/交通三类，金额为非负整数元）。",
+      "properties": {
+        "total_attractions": {
+          "default": 0,
+          "description": "景点门票总费用(元)",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_hotels": {
+          "default": 0,
+          "description": "酒店总费用(元)",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_transportation": {
+          "default": 0,
+          "description": "交通总费用(元)",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "default": 0,
+          "description": "预估总费用(元)",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "Budget",
+      "type": "object",
+      "required": [
+        "total_attractions",
+        "total_hotels",
+        "total_transportation",
+        "total"
+      ],
+      "additionalProperties": false
+    },
+    "DayPlan": {
+      "description": "单日行程（每天 2-3 个景点）。",
+      "properties": {
+        "date": {
+          "description": "日期 YYYY-MM-DD",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "day_index": {
+          "description": "第几天(从0开始)",
+          "maximum": 30,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "description": "当日行程描述",
+          "maxLength": 1000,
+          "type": "string"
+        },
+        "transportation": {
+          "default": "",
+          "description": "当日交通方式",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "accommodation": {
+          "default": "",
+          "description": "当日住宿安排",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "hotel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Hotel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "酒店信息"
+        },
+        "attractions": {
+          "description": "景点列表(2-3个)",
+          "items": {
+            "$ref": "#/$defs/Attraction"
+          },
+          "maxItems": 3,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "date",
+        "day_index",
+        "description",
+        "transportation",
+        "accommodation",
+        "hotel",
+        "attractions"
+      ],
+      "title": "DayPlan",
+      "type": "object",
+      "additionalProperties": false
+    },
+    "Hotel": {
+      "description": "酒店信息（来自高德真实候选数据）。",
+      "properties": {
+        "name": {
+          "description": "酒店名称",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        },
+        "address": {
+          "default": "",
+          "description": "酒店地址",
+          "maxLength": 200,
+          "type": "string"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Location"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "酒店位置"
+        },
+        "price_range": {
+          "default": "",
+          "description": "价格范围",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "rating": {
+          "default": "",
+          "description": "评分",
+          "maxLength": 20,
+          "type": "string"
+        },
+        "distance": {
+          "default": "",
+          "description": "距离景点距离",
+          "maxLength": 50,
+          "type": "string"
+        },
+        "type": {
+          "default": "",
+          "description": "酒店类型",
+          "maxLength": 50,
+          "type": "string"
+        },
+        "estimated_cost": {
+          "default": 0,
+          "description": "预估费用(元/晚)",
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "poi_id": {
+          "description": "高德 poi_id",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "address",
+        "location",
+        "price_range",
+        "rating",
+        "distance",
+        "type",
+        "estimated_cost",
+        "poi_id"
+      ],
+      "title": "Hotel",
+      "type": "object",
+      "additionalProperties": false
+    },
+    "Location": {
+      "description": "经纬度坐标。",
+      "properties": {
+        "longitude": {
+          "description": "经度",
+          "maximum": 180,
+          "minimum": -180,
+          "type": "number"
+        },
+        "latitude": {
+          "description": "纬度",
+          "maximum": 90,
+          "minimum": -90,
+          "type": "number"
+        }
+      },
+      "required": [
+        "longitude",
+        "latitude"
+      ],
+      "title": "Location",
+      "type": "object",
+      "additionalProperties": false
+    },
+    "TripPlan": {
+      "description": "对外返回的完整旅行计划（含派生字段与降级信息）。",
+      "properties": {
+        "city": {
+          "description": "目的地城市",
+          "maxLength": 50,
+          "minLength": 1,
+          "type": "string"
+        },
+        "start_date": {
+          "description": "开始日期",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "end_date": {
+          "description": "结束日期",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "days": {
+          "description": "每日行程",
+          "items": {
+            "$ref": "#/$defs/DayPlan"
+          },
+          "maxItems": 14,
+          "minItems": 1,
+          "type": "array"
+        },
+        "overall_suggestions": {
+          "default": "",
+          "description": "总体建议",
+          "maxLength": 2000,
+          "type": "string"
+        },
+        "budget": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Budget"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "预算信息(后端将重算)"
+        },
+        "weather_info": {
+          "description": "天气信息",
+          "items": {
+            "$ref": "#/$defs/WeatherInfo"
+          },
+          "type": "array"
+        },
+        "weather_updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "天气数据更新时间(ISO8601)"
+        },
+        "weather_stale": {
+          "default": false,
+          "description": "天气数据是否延迟",
+          "type": "boolean"
+        },
+        "map_image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "静态地图代理地址"
+        },
+        "share_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "分享 token（用于分享链接）"
+        },
+        "notices": {
+          "description": "降级/提示信息",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "city",
+        "start_date",
+        "end_date",
+        "days",
+        "overall_suggestions",
+        "budget",
+        "weather_info",
+        "weather_updated_at",
+        "weather_stale",
+        "map_image_url",
+        "share_token",
+        "notices"
+      ],
+      "title": "TripPlan",
+      "type": "object",
+      "additionalProperties": false
+    },
+    "TripPlanDraft": {
+      "description": "PlannerAgent 输出的原始行程草稿（未注入天气/地图等派生字段）。",
+      "properties": {
+        "city": {
+          "description": "目的地城市",
+          "maxLength": 50,
+          "minLength": 1,
+          "type": "string"
+        },
+        "start_date": {
+          "description": "开始日期",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "end_date": {
+          "description": "结束日期",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "days": {
+          "description": "每日行程",
+          "items": {
+            "$ref": "#/$defs/DayPlan"
+          },
+          "maxItems": 14,
+          "minItems": 1,
+          "type": "array"
+        },
+        "overall_suggestions": {
+          "default": "",
+          "description": "总体建议",
+          "maxLength": 2000,
+          "type": "string"
+        },
+        "budget": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Budget"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "预算信息(后端将重算)"
+        }
+      },
+      "required": [
+        "city",
+        "start_date",
+        "end_date",
+        "days",
+        "overall_suggestions",
+        "budget"
+      ],
+      "title": "TripPlanDraft",
+      "type": "object",
+      "additionalProperties": false
+    },
+    "TripPlanRequest": {
+      "description": "用户规划请求。",
+      "properties": {
+        "city": {
+          "description": "目的地城市",
+          "maxLength": 50,
+          "minLength": 1,
+          "type": "string"
+        },
+        "start_date": {
+          "description": "开始日期",
+          "format": "date",
+          "type": "string"
+        },
+        "end_date": {
+          "description": "结束日期",
+          "format": "date",
+          "type": "string"
+        },
+        "days": {
+          "description": "旅行天数",
+          "maximum": 14,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "preferences": {
+          "description": "旅行偏好",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        },
+        "budget": {
+          "description": "预算档位",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string"
+        },
+        "transportation": {
+          "description": "交通方式",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string"
+        },
+        "accommodation": {
+          "description": "住宿类型",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "city",
+        "start_date",
+        "end_date",
+        "days",
+        "preferences",
+        "budget",
+        "transportation",
+        "accommodation"
+      ],
+      "title": "TripPlanRequest",
+      "type": "object",
+      "additionalProperties": false
+    },
+    "WeatherInfo": {
+      "description": "单日天气信息（仅来自高德天气接口实际返回的数据）。",
+      "properties": {
+        "date": {
+          "description": "日期 YYYY-MM-DD",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "day_weather": {
+          "default": "",
+          "description": "白天天气",
+          "maxLength": 50,
+          "type": "string"
+        },
+        "night_weather": {
+          "default": "",
+          "description": "夜间天气",
+          "maxLength": 50,
+          "type": "string"
+        },
+        "day_temp": {
+          "description": "白天温度(摄氏度)",
+          "maximum": 60,
+          "minimum": -60,
+          "type": "integer"
+        },
+        "night_temp": {
+          "description": "夜间温度(摄氏度)",
+          "maximum": 60,
+          "minimum": -60,
+          "type": "integer"
+        },
+        "wind_direction": {
+          "default": "",
+          "description": "风向",
+          "maxLength": 50,
+          "type": "string"
+        },
+        "wind_power": {
+          "default": "",
+          "description": "风力",
+          "maxLength": 50,
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "day_weather",
+        "night_weather",
+        "day_temp",
+        "night_temp",
+        "wind_direction",
+        "wind_power"
+      ],
+      "title": "WeatherInfo",
+      "type": "object",
+      "additionalProperties": false
+    }
+  },
+  "description": "聚合全部共享契约模型，仅用于一次性导出 $defs（不参与运行逻辑）。",
+  "properties": {
+    "location": {
+      "$ref": "#/$defs/Location"
+    },
+    "attraction": {
+      "$ref": "#/$defs/Attraction"
+    },
+    "hotel": {
+      "$ref": "#/$defs/Hotel"
+    },
+    "budget": {
+      "$ref": "#/$defs/Budget"
+    },
+    "weather_info": {
+      "$ref": "#/$defs/WeatherInfo"
+    },
+    "day_plan": {
+      "$ref": "#/$defs/DayPlan"
+    },
+    "trip_plan_draft": {
+      "$ref": "#/$defs/TripPlanDraft"
+    },
+    "trip_plan": {
+      "$ref": "#/$defs/TripPlan"
+    },
+    "trip_plan_request": {
+      "$ref": "#/$defs/TripPlanRequest"
+    }
+  },
+  "required": [
+    "location",
+    "attraction",
+    "hotel",
+    "budget",
+    "weather_info",
+    "day_plan",
+    "trip_plan_draft",
+    "trip_plan",
+    "trip_plan_request"
+  ],
+  "title": "Contracts",
+  "type": "object",
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
