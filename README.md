@@ -38,7 +38,7 @@ forming a complete "plan → travel → share" experience loop.
 | 预算计算 / Budget Calculation | 门票 / 酒店 / 交通三类明细与预估总额，金额统一为整数元。Itemized ticket / hotel / transportation estimates with integer-yuan precision. |
 | 静态地图 / Static Map | 后端持有地图密钥并通过不透明 token 代理生成同源图片，前端零地图代码。The backend holds the map key and proxies same-origin images via opaque tokens; the frontend contains no map code. |
 | 天气信息 / Weather | 仅展示服务实际返回的预报日期，缺失日期明确标注，不补充任何编造数据。Only dates actually returned by the weather service are displayed; missing dates are explicitly marked and never fabricated. |
-| 品牌分享 / Brand Sharing | 行程（含地图、预算与天气时间戳）一键导出为带品牌水印的 PNG 分享图。The itinerary (map, budget, and weather timestamp) is exported as a watermarked PNG share image in one click. |
+| 品牌分享 / Brand Sharing | 行程（含地图、预算与天气时间戳）一键导出为带品牌水印的 PNG 分享图；同时签发不透明分享 token，生成可在任意设备打开的分享链接（默认 7 天有效）。The itinerary (map, budget, and weather timestamp) is exported as a watermarked PNG share image in one click; an opaque share token also produces a link that opens on any device (valid 7 days by default). |
 | 多模型适配 / Multi-Provider LLM | 默认 DeepSeek，可通过配置切换任意 OpenAI 兼容端点（Qwen / OpenAI 等），输出契约保持不变。DeepSeek by default; any OpenAI-compatible endpoint (Qwen / OpenAI, etc.) can be selected via configuration without changing the output contract. |
 
 ## 技术架构 / Architecture
@@ -64,13 +64,25 @@ dependency.
 
 ## 快速开始 / Quick Start
 
-### 1. 启动 Redis / Start Redis
+### 方式一：Docker Compose（推荐）/ Option 1: Docker Compose (Recommended)
+
+```bash
+cp backend/.env.example backend/.env   # 填写 AMAP_API_KEY 与 LLM_API_KEY
+docker compose up --build              # 启动 redis + backend + frontend
+```
+
+访问 http://localhost:8080 （前端经 nginx 同源代理 `/api` 至后端）。
+Open http://localhost:8080 (the frontend proxies `/api` to the backend via nginx).
+
+### 方式二：本地开发 / Option 2: Local Development
+
+#### 1. 启动 Redis / Start Redis
 
 ```bash
 redis-server
 ```
 
-### 2. 配置并启动后端 / Configure and Start the Backend
+#### 2. 配置并启动后端 / Configure and Start the Backend
 
 ```bash
 cd backend
@@ -82,7 +94,7 @@ uv run uvicorn app.api.main:app --reload --port 8000
 健康检查：`GET http://127.0.0.1:8000/api/health`（返回 Redis 可用状态）。
 Health check: `GET http://127.0.0.1:8000/api/health` (reports Redis availability).
 
-### 3. 启动前端 / Start the Frontend
+#### 3. 启动前端 / Start the Frontend
 
 ```bash
 cd frontend
@@ -113,12 +125,16 @@ Secrets live only in `backend/.env` (ignored by `.gitignore`) and must never be 
 | `LLM_API_KEY` | LLM 服务密钥 / LLM service key | 空 / empty | 是 / Yes |
 | `LLM_TEMPERATURE` | 行程生成采样温度 / Sampling temperature | `0.3` | 否 / No |
 | `REDIS_URL` | Redis 连接串 / Redis connection string | `redis://127.0.0.1:6379/0` | 否 / No |
+| `PLAN_RATE_LIMIT_PER_MINUTE` | 行程规划接口单 IP 每分钟限流次数 / Per-IP plan rate limit per minute | `10` | 否 / No |
+| `STATIC_MAP_RATE_LIMIT_PER_MINUTE` | 静态图代理单 IP 每分钟限流次数 / Per-IP static-map rate limit per minute | `60` | 否 / No |
+| `PLAN_SHARE_TTL_SECONDS` | 分享行程缓存 TTL（秒）/ Shared-plan cache TTL (seconds) | `604800` | 否 / No |
 
 ## API 概览 / API Overview
 
 | 方法 / Method | 路径 / Path | 说明 / Description |
 | --- | --- | --- |
-| `POST` | `/api/trip/plan` | 生成旅行计划，统一响应信封 `{code, data, message}` / Generate a travel plan with a unified response envelope |
+| `POST` | `/api/trip/plan` | 生成旅行计划，统一响应信封 `{code, data, message}`（单 IP 滑动窗口限流）/ Generate a travel plan with a unified response envelope (per-IP sliding-window rate limit) |
+| `GET` | `/api/trip/plan/{token}` | 按分享 token 取回行程（分享链接的后端支撑）/ Fetch a shared itinerary by share token |
 | `GET` | `/api/trip/static-map/{token}` | 静态图代理，返回 PNG（图片缓存 + 单 IP 限流）/ Static-map proxy returning PNG (image cache + per-IP rate limit) |
 | `GET` | `/api/health` | 健康检查，含 Redis 可用状态 / Health check including Redis availability |
 
@@ -131,13 +147,32 @@ uv run ruff check app tests                    # 代码规范检查 / lint
 uv run mypy app tests --strict                 # 全量类型检查 / strict type checking
 
 cd frontend
+npm run test                                   # vitest 单元测试 / unit tests
 npm run build                                  # vue-tsc 类型检查 + vite 构建 / type check + build
 ```
 
-当前状态 / Current status：后端 74 项单元与集成测试，行覆盖率 88%；ruff 零告警；
-mypy（strict 模式）全量通过；前端 vue-tsc 与生产构建通过。
-The backend has 74 unit and integration tests with 88% line coverage; ruff reports zero issues;
-mypy passes in strict mode across the codebase; the frontend passes vue-tsc and production build.
+### 前后端契约同步 / Contract Sync
+
+前端 TypeScript 类型由后端 Pydantic 模型自动生成，禁止手工修改
+`frontend/src/types/contracts.generated.ts`。模型变更后执行：
+Frontend TypeScript types are generated from backend Pydantic models — never edit
+`frontend/src/types/contracts.generated.ts` by hand. After changing a model, run:
+
+```bash
+cd backend && uv run python scripts/export_schemas.py   # Pydantic -> JSON Schema
+cd frontend && npm run generate:contracts               # JSON Schema -> TypeScript
+```
+
+CI 会重新执行上述两步并 `git diff --exit-code`，任何未同步的模型变更都会构建失败。
+CI re-runs both steps and fails the build on any drift via `git diff --exit-code`.
+
+当前状态 / Current status：后端 83 项单元与集成测试，行覆盖率 90%；ruff 零告警；
+mypy（strict 模式）全量通过；前端 vitest 单元测试、vue-tsc 与生产构建通过。
+上述全部检查由 GitHub Actions CI 在每次 push / PR 时自动执行（见 `.github/workflows/ci.yml`）。
+The backend has 83 unit and integration tests with 90% line coverage; ruff reports zero issues;
+mypy passes in strict mode across the codebase; the frontend passes vitest unit tests, vue-tsc,
+and production build. All checks run automatically in GitHub Actions CI on every push and pull
+request (see `.github/workflows/ci.yml`).
 
 ## 目录结构 / Project Structure
 
@@ -176,6 +211,13 @@ openspec/           OpenSpec 规划产物（proposal / specs / design / tasks）
 - 外部服务失败必须可感知：明确报错（统一信封）或优雅降级，禁止静默吞异常。
   External failures are always perceptible: explicit errors (unified envelope) or graceful
   degradation — never silently swallowed.
+- 行程规划接口按单 IP 滑动窗口限流，防止恶意刷量消耗 LLM 配额；Redis 可用时
+  限流计数跨实例共享（Lua 原子脚本），不可用时回退进程内存实现；Redis 断线自动重连，
+  恢复后无需重启即可接回缓存。
+  The planning endpoint is rate-limited per IP with a sliding window to protect LLM quota;
+  when Redis is available, rate-limit counts are shared across instances (atomic Lua script),
+  otherwise it falls back to in-process memory; Redis reconnects automatically after
+  outages — no restart required.
 
 ## 当前版本范围与路线图 / Current Scope & Roadmap
 
