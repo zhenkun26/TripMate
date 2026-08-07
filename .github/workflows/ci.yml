@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (ruff / mypy --strict / pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check app tests
+
+      - name: Type check (mypy --strict)
+        run: uv run mypy app tests --strict
+
+      - name: Test with coverage (pytest)
+        run: uv run pytest --cov=app --cov-report=term -q
+
+  contracts:
+    name: Contract drift check (Pydantic -> TS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Export contracts (Pydantic -> JSON Schema)
+        working-directory: backend
+        run: uv run python scripts/export_schemas.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Generate TypeScript contracts
+        working-directory: frontend
+        run: npm run generate:contracts
+
+      - name: Fail on contract drift
+        run: git diff --exit-code frontend/contracts/contracts.json frontend/src/types/contracts.generated.ts
+
+  frontend:
+    name: Frontend (vitest / vue-tsc / build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests (vitest)
+        run: npm run test
+
+      - name: Type check and production build
+        run: npm run build
