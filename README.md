@@ -1,5 +1,7 @@
 # TripMate 智能旅行助手 / TripMate Smart Travel Assistant
 
+工程记录 / Engineering records: [技术决策](docs/DECISIONS.md) · [精选问题复盘](docs/PROBLEM_REVIEWS.md)
+
 > 一次输入，即刻生成可执行的旅行计划 —— 真实数据、可信预算、品牌分享。
 > One input, an actionable itinerary in seconds — real data, trusted budgeting, brand-ready sharing.
 
