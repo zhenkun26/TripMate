@@ -76,6 +76,18 @@ docker compose up --build              # 启动 redis + backend + frontend
 访问 http://localhost:8080 （前端经 nginx 同源代理 `/api` 至后端）。
 Open http://localhost:8080 (the frontend proxies `/api` to the backend via nginx).
 
+**Kubernetes 部署 / Kubernetes Deployment**：backend 提供独立 lifecycle probe（参见下方健康端点）；前端与 backend 均以非 root 容器运行并提供 Prometheus `/metrics`。多架构镜像（`linux/arm64`、`linux/amd64`）由 `scripts/build-multiarch.sh` 生成，同一 Git SHA 的任一平台镜像均可用于部署。ACR 推送与 Helm Chart 由后续 CloudShip 交付 change 负责。
+
+**环境变量 / Environment Variables（生产必需 / Required for Production）**：
+
+| 变量 / Variable | 说明 / Description |
+|---|---|
+| `SERVICE` | 服务名称（默认 `tripmate`）。Service name (default `tripmate`). |
+| `ENVIRONMENT` | 部署环境（`dev`/`test`/`prod`）。Deployment environment (`dev`/`test`/`prod`). |
+| `VERSION` | 应用版本号。Application version. |
+| `PLAN_DEADLINE_SECONDS` | 行程规划端到端硬超时（默认 60 秒）。End-to-end deadline for planning (default 60s). |
+| `GRACEFUL_SHUTDOWN_SECONDS` | SIGTERM 后宽限期（默认 30 秒）。Graceful shutdown grace period (default 30s). |
+
 ### 方式二：本地开发 / Option 2: Local Development
 
 #### 1. 启动 Redis / Start Redis
@@ -93,8 +105,15 @@ uv sync                   # 首次安装依赖（需要联网）
 uv run uvicorn app.api.main:app --reload --port 8000
 ```
 
-健康检查：`GET http://127.0.0.1:8000/api/health`（返回 Redis 可用状态）。
-Health check: `GET http://127.0.0.1:8000/api/health` (reports Redis availability).
+健康端点 / Health endpoints（探测说明见下方 / see probe details below）：
+- `GET /api/health` — 兼容性依赖摘要（返回 Redis 可用状态）/ Compatibility dependency summary (reports Redis status)
+- `GET /api/health/startup` — startup probe（配置有效且装配完成）/ returns 200 when initialized
+- `GET /api/health/live` — liveness probe（进程与事件循环存活）/ returns 200 when process is alive
+- `GET /api/health/ready` — readiness probe（可接业务流量）/ returns 200 when accepting traffic
+- `GET /metrics` — Prometheus 文本格式指标 / Prometheus text-format metrics
+
+日志输出为单行 JSON（含 `service`、`environment`、`version`、`request_id`、`route`、`status_code`、`duration_ms`、`event` 等字段）；`X-Request-ID` 在请求与响应中自动透传。
+Logs are emitted as single-line JSON (with `service`, `environment`, `version`, `request_id`, `route`, `status_code`, `duration_ms`, `event`, etc.); `X-Request-ID` is automatically propagated in requests and responses.
 
 #### 3. 启动前端 / Start the Frontend
 
@@ -242,3 +261,5 @@ This project is open-sourced under the MIT License — see [LICENSE](LICENSE).
 行程、预算与天气信息仅供参考，出行前请以官方最新信息为准。
 Itineraries, budgets, and weather are for reference only; always confirm with official sources
 before travel.
+
+> 本项目由 Vibe Coding 辅助实现落地。Built with Vibe Coding.
