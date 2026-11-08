@@ -22,9 +22,8 @@ forming a complete "plan → travel → share" experience loop.
 - **真实数据驱动**：行程中的景点与酒店均来自高德开放平台的真实 POI 数据，杜绝编造内容。
   Real data driven: every attraction and hotel in the itinerary comes from authentic Amap POI data —
   no fabricated content.
-- **预算可信**：门票总额由后端基于结构化票价精确重算，酒店与交通按预算档位锚点表估算。
-  Trusted budgeting: attraction totals are precisely recalculated from structured ticket prices,
-  while hotels and transportation follow budget-tier anchor estimates.
+- **预算可信**：后端累加大于零的结构化门票价格；零值或无有效正票价时，按经济型 / 舒适型 / 豪华型分别估算 30 / 60 / 120 元。当前零值也按估算处理，不能表示已确认免费。酒店优先汇总行程中的预估费用，合计为零时按档位估算；交通按档位估算。
+  Trusted budgeting: the backend sums positive structured ticket prices and substitutes 30 / 60 / 120 yuan for zero or non-positive values by budget tier. A zero value is currently estimated, not treated as confirmed free admission. Hotel estimates come from the itinerary, with a tier-based fallback when their total is zero; transportation uses tier-based estimates.
 - **开箱即用**：本地数条命令即可完整运行，技术栈均为成熟稳定的开源组件。
   Ready to run: a few local commands start the full stack, built entirely on mature open-source
   components.
@@ -76,7 +75,7 @@ docker compose up --build              # 启动 redis + backend + frontend
 访问 http://localhost:8080 （前端经 nginx 同源代理 `/api` 至后端）。
 Open http://localhost:8080 (the frontend proxies `/api` to the backend via nginx).
 
-**Kubernetes 部署 / Kubernetes Deployment**：backend 提供独立 lifecycle probe（参见下方健康端点）；前端与 backend 均以非 root 容器运行并提供 Prometheus `/metrics`。多架构镜像（`linux/arm64`、`linux/amd64`）由 `scripts/build-multiarch.sh` 生成，同一 Git SHA 的任一平台镜像均可用于部署。ACR 推送与 Helm Chart 由后续 CloudShip 交付 change 负责。
+**Kubernetes 部署 / Kubernetes Deployment**：backend 提供独立 lifecycle probe（参见下方健康端点）；前端与 backend 均以非 root 容器运行并提供 Prometheus `/metrics`。当前仓库未提供 `scripts/build-multiarch.sh`；多架构镜像构建步骤与兼容性需另行验证。ACR 推送与 Helm Chart 由后续 CloudShip 交付 change 负责。
 
 **环境变量 / Environment Variables（生产必需 / Required for Production）**：
 
@@ -89,6 +88,9 @@ Open http://localhost:8080 (the frontend proxies `/api` to the backend via nginx
 | `GRACEFUL_SHUTDOWN_SECONDS` | SIGTERM 后宽限期（默认 30 秒）。Graceful shutdown grace period (default 30s). |
 
 ### 方式二：本地开发 / Option 2: Local Development
+
+后端和前端分别在不同终端运行；以下各组命令均从仓库根目录开始。
+Run the backend and frontend in separate terminals; start each command group from the repository root.
 
 #### 1. 启动 Redis / Start Redis
 
@@ -116,6 +118,9 @@ uv run uvicorn app.api.main:app --reload --port 8000
 Logs are emitted as single-line JSON (with `service`, `environment`, `version`, `request_id`, `route`, `status_code`, `duration_ms`, `event`, etc.); `X-Request-ID` is automatically propagated in requests and responses.
 
 #### 3. 启动前端 / Start the Frontend
+
+保持后端运行，另开一个终端并进入仓库根目录，再执行：
+Keep the backend running. Open another terminal at the repository root, then run:
 
 ```bash
 cd frontend
@@ -161,27 +166,34 @@ Secrets live only in `backend/.env` (ignored by `.gitignore`) and must never be 
 
 ## 质量保障 / Quality Assurance
 
+从仓库根目录执行；子 shell 会在每组检查后保留当前目录。
+Run from the repository root; each subshell keeps the parent working directory unchanged.
+
 ```bash
-cd backend
+(
+cd backend || exit
 uv run pytest --cov=app --cov-report=term -q   # 单元/集成测试 + 覆盖率 / tests + coverage
 uv run ruff check app tests                    # 代码规范检查 / lint
 uv run mypy app tests --strict                 # 全量类型检查 / strict type checking
+)
 
-cd frontend
+(
+cd frontend || exit
 npm run test                                   # vitest 单元测试 / unit tests
 npm run build                                  # vue-tsc 类型检查 + vite 构建 / type check + build
+)
 ```
 
 ### 前后端契约同步 / Contract Sync
 
 前端 TypeScript 类型由后端 Pydantic 模型自动生成，禁止手工修改
-`frontend/src/types/contracts.generated.ts`。模型变更后执行：
+`frontend/src/types/contracts.generated.ts`。模型变更后，从仓库根目录执行：
 Frontend TypeScript types are generated from backend Pydantic models — never edit
-`frontend/src/types/contracts.generated.ts` by hand. After changing a model, run:
+`frontend/src/types/contracts.generated.ts` by hand. After changing a model, run from the repository root:
 
 ```bash
-cd backend && uv run python scripts/export_schemas.py   # Pydantic -> JSON Schema
-cd frontend && npm run generate:contracts               # JSON Schema -> TypeScript
+(cd backend && uv run python scripts/export_schemas.py)   # Pydantic -> JSON Schema
+(cd frontend && npm run generate:contracts)               # JSON Schema -> TypeScript
 ```
 
 CI 会重新执行上述两步并 `git diff --exit-code`，任何未同步的模型变更都会构建失败。
@@ -218,9 +230,8 @@ openspec/           OpenSpec 规划产物（proposal / specs / design / tasks）
 
 ## 数据契约与安全 / Data Contract & Security
 
-- 金额均为非负整数（元），门票总额由后端精确重算，禁止浮点参与金额运算。
-  All amounts are non-negative integers (yuan); totals are recalculated by the backend with no
-  floating-point arithmetic.
+- 金额均为非负整数（元），后端累加正票价；零值或非正票价按预算档位估算，不能据此确认免费，禁止浮点参与金额运算。
+  All amounts are non-negative integers (yuan). The backend sums positive ticket prices and substitutes tier-based estimates for zero or non-positive values; this does not confirm free admission. No floating-point arithmetic is used.
 - 行程中的景点与酒店必须来自高德真实候选，后端强制校验并兜底锚定，杜绝编造。
   Attractions and hotels must come from authentic Amap candidates; the backend enforces and
   reconciles them, eliminating fabrication.
